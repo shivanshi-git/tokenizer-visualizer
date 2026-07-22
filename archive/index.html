@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="cream">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Pipeline & Tokenizer Visualizer</title>
+    <!-- Google Fonts: Outfit for UI, JetBrains Mono for technical grids/code -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <div class="logo-area">
+                <span class="logo-icon">⚡</span>
+                <div>
+                    <h1>LLM Input Pipeline Visualizer</h1>
+                    <p class="subtitle">See how raw text transforms into numbers, vectors, and attention weights</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="theme-toggle" class="btn btn-secondary" title="Toggle theme">
+                    <span class="light-icon">☀️ Cream</span>
+                    <span class="dark-icon">🌙 Cyber</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Pipeline Step Tracker (Interactive Stepper) -->
+    <nav class="pipeline-stepper" aria-label="Pipeline stages">
+        <div class="stepper-container">
+            <button class="step-btn active" data-step="text">
+                <span class="step-num">1</span>
+                <span class="step-label">Text Input</span>
+            </button>
+            <span class="step-arrow">→</span>
+            <button class="step-btn" data-step="tokenization">
+                <span class="step-num">2</span>
+                <span class="step-label">Tokenization</span>
+            </button>
+            <span class="step-arrow">→</span>
+            <button class="step-btn" data-step="token-ids">
+                <span class="step-num">3</span>
+                <span class="step-label">Token IDs</span>
+            </button>
+            <span class="step-arrow">→</span>
+            <button class="step-btn" data-step="embeddings">
+                <span class="step-num">4</span>
+                <span class="step-label">Embeddings</span>
+            </button>
+            <span class="step-arrow">→</span>
+            <button class="step-btn" data-step="positional">
+                <span class="step-num">5</span>
+                <span class="step-label">Positional</span>
+            </button>
+            <span class="step-arrow">→</span>
+            <button class="step-btn" data-step="attention">
+                <span class="step-num">6</span>
+                <span class="step-label">Attention</span>
+            </button>
+            <span class="step-arrow">→</span>
+            <button class="step-btn" data-step="transformer">
+                <span class="step-num">7</span>
+                <span class="step-label">Transformer</span>
+            </button>
+        </div>
+    </nav>
+
+    <main class="app-layout">
+        <!-- Left Sidebar: Controls and Input, always visible -->
+        <section class="control-panel">
+            <div class="card panel-card">
+                <div class="card-header">
+                    <h2>Input Control</h2>
+                    <span class="badge" id="char-counter">0 chars</span>
+                </div>
+                
+                <div class="textarea-container">
+                    <textarea id="text-input" placeholder="Type or paste your text here..." autofocus>Is Chinese more efficient than English in an LLM?</textarea>
+                </div>
+
+                <div class="tokenizer-selector-group">
+                    <span class="label">Tokenizer Model:</span>
+                    <div class="segmented-control">
+                        <button class="segment-btn" data-mode="word">Word-level</button>
+                        <button class="segment-btn" data-mode="char">Character</button>
+                        <button class="segment-btn active" data-mode="bpe">Subword (BPE)</button>
+                    </div>
+                </div>
+
+                <div class="presets-section">
+                    <span class="label">Presets:</span>
+                    <div class="presets-grid">
+                        <button class="btn btn-preset" data-preset="ml">ML Example</button>
+                        <button class="btn btn-preset" data-preset="pangram">Pangram</button>
+                        <button class="btn btn-preset" data-preset="emojis">With Emojis</button>
+                        <button class="btn btn-preset" data-preset="code">Code</button>
+                    </div>
+                </div>
+
+                <hr class="divider">
+
+                <div class="quick-stats">
+                    <div class="stat-box">
+                        <span class="stat-val" id="stat-tokens">0</span>
+                        <span class="stat-lbl">Tokens</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-val" id="stat-chars">0</span>
+                        <span class="stat-lbl">Characters</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-val" id="stat-ratio">0.0</span>
+                        <span class="stat-lbl">Chars / Token</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card bpe-vocab-card" id="bpe-vocab-panel">
+                <div class="card-header">
+                    <h3>BPE Vocabulary & Merges</h3>
+                    <span class="badge" id="vocab-size">256 Rules</span>
+                </div>
+                <div class="search-box-container">
+                    <input type="text" id="vocab-search" placeholder="Search subword / merge rules...">
+                </div>
+                <div class="vocab-list" id="vocab-list-container">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Content Area: Swappable view based on selected pipeline stage -->
+        <section class="stage-viewer">
+            <!-- Stage 1: Text -->
+            <div class="stage-content active" id="stage-text">
+                <div class="card stage-card">
+                    <div class="card-header">
+                        <h2>Step 1: Raw Text Stream</h2>
+                        <span class="stage-badge">Input</span>
+                    </div>
+                    <p class="stage-description">
+                        Large Language Models process raw text streams. Each character, punctuation mark, and space is parsed. Below is a raw character-level breakdown showing memory offset mapping. Hover over any block to see its character index.
+                    </p>
+                    <div class="char-stream-grid" id="char-stream-output">
+                        <!-- Loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 2: Tokenization -->
+            <div class="stage-content" id="stage-tokenization">
+                <div class="card stage-card">
+                    <div class="card-header">
+                        <h2>Step 2: Tokenization Breakdown</h2>
+                        <span class="stage-badge">Processing</span>
+                    </div>
+                    <p class="stage-description">
+                        Text is split into discrete chunks called <strong>tokens</strong>. The selected tokenizer breaks down the text stream. Hover over a token block to highlight its characters in the input text.
+                    </p>
+                    
+                    <div class="visualizer-output-container">
+                        <div class="visualizer-title">Token Output Stream</div>
+                        <div class="token-container" id="token-grid-output">
+                            <!-- Loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 3: Token IDs -->
+            <div class="stage-content" id="stage-token-ids">
+                <div class="card stage-card">
+                    <div class="card-header">
+                        <h2>Step 3: Vocabulary Mapping (Token IDs)</h2>
+                        <span class="stage-badge">Translation</span>
+                    </div>
+                    <p class="stage-description">
+                        Neural networks do not read text directly. Each token is translated into its matching integer <strong>Token ID</strong> index from the model's vocabulary list.
+                    </p>
+
+                    <div class="id-stream-grid" id="token-ids-output">
+                        <!-- Loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 4: Embeddings -->
+            <div class="stage-content" id="stage-embeddings">
+                <div class="card stage-card">
+                    <div class="card-header">
+                        <h2>Step 4: High-Dimensional Semantic Embeddings</h2>
+                        <span class="stage-badge">Representation</span>
+                    </div>
+                    <p class="stage-description">
+                        Each Token ID retrieves a high-dimensional vector from a pre-trained lookup matrix. This vector represents the <strong>semantic meaning</strong> of the token. Hover over any token below to view its embedding matrix representation (simulated 64-dimensional slice).
+                    </p>
+
+                    <div class="embedding-browser">
+                        <div class="embedding-tokens-sidebar" id="embed-tokens-list">
+                            <!-- Loaded dynamically -->
+                        </div>
+                        <div class="embedding-visual-area">
+                            <div class="embedding-header">
+                                <span class="active-embed-label">Token: <strong id="embed-token-name">-</strong></span>
+                                <span class="active-embed-id">ID: <code id="embed-token-id">-</code></span>
+                            </div>
+                            <div class="vector-grid-container">
+                                <div class="vector-grid" id="embed-vector-grid">
+                                    <!-- Dynamic 8x8 matrix -->
+                                </div>
+                                <div class="vector-scale">
+                                    <span>Negative (-1.0)</span>
+                                    <div class="gradient-bar"></div>
+                                    <span>Positive (+1.0)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 5: Positional Embeddings -->
+            <div class="stage-content" id="stage-positional">
+                <div class="card stage-card">
+                    <div class="card-header">
+                        <h2>Step 5: Positional Embeddings</h2>
+                        <span class="stage-badge">Contextualization</span>
+                    </div>
+                    <p class="stage-description">
+                        Since Transformers process all tokens simultaneously (in parallel), they have no native sense of sequence order. To fix this, a **Positional Embedding** (using sine/cosine frequencies or learned indexes) is added element-wise to each token's semantic embedding.
+                    </p>
+
+                    <div class="positional-formula-container">
+                        <div class="vector-sum-formula">
+                            <div class="formula-term">
+                                <span class="term-title">Token Embedding</span>
+                                <div class="vector-preview-bar semantic-color" id="formula-semantic-preview"></div>
+                                <span class="term-desc">Semantic context</span>
+                            </div>
+                            <span class="formula-operator">+</span>
+                            <div class="formula-term">
+                                <span class="term-title">Positional Embedding</span>
+                                <div class="vector-preview-bar positional-color" id="formula-positional-preview"></div>
+                                <span class="term-desc">Sequence position</span>
+                            </div>
+                            <span class="formula-operator">=</span>
+                            <div class="formula-term">
+                                <span class="term-title">Transformer Input</span>
+                                <div class="vector-preview-bar combined-color" id="formula-combined-preview"></div>
+                                <span class="term-desc">Complete representation</span>
+                            </div>
+                        </div>
+
+                        <div class="positional-token-selector-row" id="positional-token-select">
+                            <!-- Tokens list loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 6: Attention Matrix -->
+            <div class="stage-content" id="stage-attention">
+                <div class="card stage-card">
+                    <div class="card-header">
+                        <h2>Step 6: Self-Attention Weight Visualization</h2>
+                        <span class="stage-badge">Relationships</span>
+                    </div>
+                    <p class="stage-description">
+                        Self-Attention allows tokens to "look" at other tokens in the sequence to build context. The matrix below shows how much attention each token (row) pays to other tokens (column). Change heads to see different focus patterns!
+                    </p>
+
+                    <div class="attention-controls">
+                        <div class="control-label-group">
+                            <span>Select Attention Head:</span>
+                            <div class="segmented-control mini-control">
+                                <button class="segment-btn mini active" data-head="1">Head 1: Local Context</button>
+                                <button class="segment-btn mini" data-head="2">Head 2: Broadcast First</button>
+                                <button class="segment-btn mini" data-head="3">Head 3: Key-Value Associations</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="matrix-wrapper">
+                        <div class="attention-matrix-container">
+                            <div class="matrix-y-axis" id="matrix-y-labels">
+                                <!-- Row labels -->
+                            </div>
+                            <div class="matrix-main-section">
+                                <div class="matrix-x-axis" id="matrix-x-labels">
+                                    <!-- Column labels -->
+                                </div>
+                                <div class="matrix-grid-viewport">
+                                    <div class="matrix-grid" id="attention-matrix-grid">
+                                        <!-- Matrix cells loaded dynamically -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="attention-details-overlay" id="attention-tooltip">
+                            Hover over a cell to see how tokens attend to each other.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 7: Transformer Layers -->
+            <div class="stage-content" id="stage-transformer">
+                <div class="card stage-card">
+                    <div class="card-header">
+                        <h2>Step 7: Transformer Blocks & Feed-Forward Pipeline</h2>
+                        <span class="stage-badge">Computation</span>
+                    </div>
+                    <p class="stage-description">
+                        With embeddings and attention scores combined, the vectors flow through stackable **Transformer Blocks**. Below is the representation of one standard layer. Hover over the layers to see how the representation updates.
+                    </p>
+
+                    <div class="transformer-flow-diagram">
+                        <div class="flow-step" data-block="input">
+                            <div class="flow-box accent-box">
+                                <span class="flow-box-title">Input Vectors (X)</span>
+                                <span class="flow-box-desc">Tokens with positional context</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flow-connector">↓</div>
+
+                        <div class="flow-step" data-block="mha">
+                            <div class="flow-box">
+                                <span class="flow-box-title">Multi-Head Self Attention</span>
+                                <span class="flow-box-desc">Aggregate context from other tokens</span>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector">↓</div>
+
+                        <div class="flow-step" data-block="add-norm-1">
+                            <div class="flow-box secondary-box">
+                                <span class="flow-box-title">Add & LayerNorm (Residual)</span>
+                                <span class="flow-box-desc">Stabilize training & bypass original inputs</span>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector">↓</div>
+
+                        <div class="flow-step" data-block="ffn">
+                            <div class="flow-box">
+                                <span class="flow-box-title">Feed-Forward MLP Network</span>
+                                <span class="flow-box-desc">Compute complex token-specific features</span>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector">↓</div>
+
+                        <div class="flow-step" data-block="add-norm-2">
+                            <div class="flow-box secondary-box">
+                                <span class="flow-box-title">Add & LayerNorm (Residual)</span>
+                                <span class="flow-box-desc">Produce final layer output vector representation</span>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector">↓</div>
+
+                        <div class="flow-step" data-block="output">
+                            <div class="flow-box success-box">
+                                <span class="flow-box-title">Output Vector (Y)</span>
+                                <span class="flow-box-desc">Ready for next block or prediction layer</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-container">
+            <p>Made with ⚡ for advanced LLM education. Interactive companion to tokenization and transformer input workflows.</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="tokenizer.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
