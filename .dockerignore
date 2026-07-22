@@ -1,0 +1,11 @@
+node_modules
+dist
+archive
+.git
+.agents
+.gemini
+Dockerfile
+deployment.yaml
+walkthrough.md
+implementation_plan.md
+task.md

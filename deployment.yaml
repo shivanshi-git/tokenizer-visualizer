@@ -1,0 +1,88 @@
+# ==============================================================================
+# KUBERNETES MANIFEST FOR TOKENIZER VISUALIZER
+# This file defines two main resources: a Deployment (workload) and a Service (networking)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. THE DEPLOYMENT
+# A Deployment tells Kubernetes how to run and scale your application container.
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tokenizer-visualizer
+  # Metadata labels help identify and categorize this resource
+  labels:
+    app: tokenizer-visualizer
+spec:
+  # Replicas specifies how many instances (pods) of the container should run in parallel.
+  # If one pod crashes, Kubernetes will automatically spin up a new one to maintain this count.
+  replicas: 2
+  
+  # The Selector tells the Deployment which pods it is responsible for managing.
+  # It matches the labels specified in the pod template below.
+  selector:
+    matchLabels:
+      app: tokenizer-visualizer
+      
+  # The Template defines the structure of the Pods (containers) that will be created.
+  template:
+    metadata:
+      # These labels must match the selector above so the Deployment knows these pods belong to it.
+      labels:
+        app: tokenizer-visualizer
+    spec:
+      containers:
+      - name: tokenizer-visualizer
+        # The container image to run. In production, this would be a registry path (e.g. dockerhub-username/app:v1)
+        image: tokenizer-visualizer:latest
+        
+        # imagePullPolicy: IfNotPresent tells K8s to use the local docker image if it's already built.
+        # This is very useful when testing locally on minikube or docker-desktop.
+        imagePullPolicy: IfNotPresent
+        
+        # Ports define which container ports should be open for traffic
+        ports:
+        - containerPort: 80
+        
+        # Resource Requests & Limits prevent a single container from hogging cluster resources.
+        # CPU is measured in "millicores" (1000m = 1 CPU core). Memory is measured in Megabytes/Gigabytes.
+        resources:
+          # Limits are the maximum boundaries the container can consume before being throttled or terminated.
+          limits:
+            cpu: "500m"      # Max 0.5 CPU core
+            memory: "512Mi"  # Max 512 Megabytes RAM
+          # Requests are the minimum resources guaranteed to the container at startup.
+          # K8s scheduler uses this to decide which node has enough space to place the pod.
+          requests:
+            cpu: "100m"      # 0.1 CPU core
+            memory: "128Mi"  # 128 Megabytes RAM
+
+---
+# ------------------------------------------------------------------------------
+# 2. THE SERVICE
+# Pods are ephemeral (they get deleted, recreated, and their IP addresses change).
+# A Service provides a stable, permanent IP address and load-balances traffic 
+# across all matching pods.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: tokenizer-visualizer-service
+spec:
+  # The Selector tells the service which pods to direct traffic to.
+  # This matches the label "app: tokenizer-visualizer" defined on our pods.
+  selector:
+    app: tokenizer-visualizer
+    
+  ports:
+    - protocol: TCP
+      port: 80         # The port the service exposes inside the cluster
+      targetPort: 80   # The port on the container to direct traffic to
+      nodePort: 30080  # Exposes the service externally on this port on every cluster node (range 30000-32767)
+      
+  # Service Types:
+  # - ClusterIP (default): Only accessible from inside the Kubernetes cluster.
+  # - NodePort: Exposes the service on a static port on each Node's IP. Accessible externally.
+  # - LoadBalancer: Provisions a cloud load balancer (AWS/GCP) for public internet access.
+  type: NodePort
